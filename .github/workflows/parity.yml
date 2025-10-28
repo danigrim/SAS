@@ -55,13 +55,13 @@ jobs:
         poetry run pytest -xvs tests/parity/ --junitxml=parity_report.xml
     
     - name: Upload parity report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: parity-report
         path: parity_report.xml
     
     - name: Upload fixtures
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-fixtures
         path: tests/parity/fixtures/
