@@ -1,0 +1,612 @@
+
+global_settings:
+  sas_date_formats:
+    DATE9.: 
+      python_type: "datetime.date"
+      description: "SAS date in DDMMMYYYY format (01JAN2024)"
+      conversion: "pd.to_datetime(value, unit='D', origin='1960-01-01').date()"
+      notes: "SAS dates are days since January 1, 1960"
+    
+    DATETIME20.: 
+      python_type: "datetime.datetime"
+      description: "SAS datetime in DDMMMYYYY:HH:MM:SS format (01JAN2024:12:34:56)"
+      conversion: "pd.to_datetime(value, unit='s', origin='1960-01-01')"
+      notes: "SAS datetimes are seconds since January 1, 1960"
+    
+    TIME8.: 
+      python_type: "datetime.time"
+      description: "SAS time in HH:MM:SS format (12:34:56)"
+      conversion: "pd.to_datetime(value, unit='s').time()"
+      notes: "SAS times are seconds since midnight"
+    
+    YYMMDD10.: 
+      python_type: "datetime.date"
+      description: "SAS date in YYYY-MM-DD format (2024-01-01)"
+      conversion: "pd.to_datetime(value, unit='D', origin='1960-01-01').date()"
+  
+  sas_numeric_formats:
+    8.: 
+      python_type: "float"
+      description: "SAS numeric with default format"
+      conversion: "float(value)"
+    
+    8.2: 
+      python_type: "float"
+      description: "SAS numeric with 2 decimal places"
+      conversion: "round(float(value), 2)"
+    
+    BEST.: 
+      python_type: "float"
+      description: "SAS numeric with best format"
+      conversion: "float(value)"
+    
+    COMMA10.2: 
+      python_type: "float"
+      description: "SAS numeric with commas and 2 decimal places"
+      conversion: "float(value)"
+      display: "'{:,.2f}'.format(value)"
+  
+  sas_character_formats:
+    $CHAR.: 
+      python_type: "str"
+      description: "SAS character string"
+      conversion: "str(value)"
+    
+    $8.: 
+      python_type: "str"
+      description: "SAS character string length 8"
+      conversion: "str(value)"
+      notes: "Length becomes max length in Python"
+  
+  sas_missing_values:
+    numeric:
+      ".": 
+        python_value: "np.nan"
+        description: "SAS numeric missing"
+      ".A" to ".Z": 
+        python_value: "pd.NA"  # or custom approach to preserve special missing
+        description: "SAS special numeric missing (A-Z)"
+        preservation: "Create dictionary of original special missing codes"
+    
+    character:
+      "": 
+        python_value: "None"
+        description: "SAS character missing (blank)"
+      " ": 
+        python_value: "None"
+        description: "SAS character missing (space)"
+        preservation: "May need to distinguish between empty string and space"
+
+dataset_contracts:
+  ADSL:
+    description: "Subject-Level Analysis Dataset"
+    key_variables: ["STUDYID", "USUBJID"]
+    file_path: "data/adam/adsl.sas7bdat"
+    python_schema:
+      STUDYID:
+        sas_type: "character"
+        sas_length: 10
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: false
+        description: "Study Identifier"
+        
+      USUBJID:
+        sas_type: "character"
+        sas_length: 11
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: false
+        description: "Unique Subject Identifier"
+        primary_key: true
+        
+      SUBJID:
+        sas_type: "character"
+        sas_length: 4
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: false
+        description: "Subject Identifier for the Study"
+        
+      AGE:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8."
+        python_type: "float"
+        nullable: true
+        description: "Age"
+        
+      AGEU:
+        sas_type: "character"
+        sas_length: 5
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Age Units"
+        allowed_values: ["YEARS"]
+        
+      SEX:
+        sas_type: "character"
+        sas_length: 1
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Sex"
+        allowed_values: ["F", "M"]
+        
+      RACE:
+        sas_type: "character"
+        sas_length: 27
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Race"
+        
+      ETHNIC:
+        sas_type: "character"
+        sas_length: 24
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Ethnicity"
+        
+      ARMCD:
+        sas_type: "character"
+        sas_length: 8
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Planned Arm Code"
+        
+      ARM:
+        sas_type: "character"
+        sas_length: 20
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Description of Planned Arm"
+        
+      ACTARMCD:
+        sas_type: "character"
+        sas_length: 8
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Actual Arm Code"
+        
+      ACTARM:
+        sas_type: "character"
+        sas_length: 20
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Description of Actual Arm"
+        
+      SAFFL:
+        sas_type: "character"
+        sas_length: 1
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Safety Population Flag"
+        allowed_values: ["Y", "N", ""]
+        
+      TRTPN:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8."
+        python_type: "int"
+        nullable: true
+        description: "Planned Treatment (N)"
+        
+      TRTP:
+        sas_type: "character"
+        sas_length: 20
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Planned Treatment"
+  
+  ADLBC:
+    description: "Laboratory Blood Chemistry Analysis Dataset"
+    key_variables: ["STUDYID", "USUBJID", "PARAMCD", "AVISITN", "DTYPE"]
+    file_path: "data/adam/adlbc.sas7bdat"
+    python_schema:
+      STUDYID:
+        sas_type: "character"
+        sas_length: 10
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: false
+        description: "Study Identifier"
+        
+      USUBJID:
+        sas_type: "character"
+        sas_length: 11
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: false
+        description: "Unique Subject Identifier"
+        
+      PARAMCD:
+        sas_type: "character"
+        sas_length: 8
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: false
+        description: "Parameter Code"
+        
+      PARAM:
+        sas_type: "character"
+        sas_length: 40
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Parameter"
+        
+      AVAL:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8.2"
+        python_type: "float"
+        nullable: true
+        description: "Analysis Value"
+        
+      AVALC:
+        sas_type: "character"
+        sas_length: 8
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Analysis Value (C)"
+        
+      A1LO:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8.2"
+        python_type: "float"
+        nullable: true
+        description: "Analysis Range Lower Limit 1"
+        
+      A1HI:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8.2"
+        python_type: "float"
+        nullable: true
+        description: "Analysis Range Upper Limit 1"
+        
+      AVISITN:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8."
+        python_type: "int"
+        nullable: true
+        description: "Analysis Visit (N)"
+        
+      AVISIT:
+        sas_type: "character"
+        sas_length: 40
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Analysis Visit"
+        
+      ATPTN:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8."
+        python_type: "int"
+        nullable: true
+        description: "Analysis Timepoint (N)"
+        
+      ATPT:
+        sas_type: "character"
+        sas_length: 40
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Analysis Timepoint"
+        
+      ADY:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8."
+        python_type: "int"
+        nullable: true
+        description: "Analysis Relative Day"
+        
+      ANRLO:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8.2"
+        python_type: "float"
+        nullable: true
+        description: "Analysis Normal Range Lower Limit"
+        
+      ANRHI:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8.2"
+        python_type: "float"
+        nullable: true
+        description: "Analysis Normal Range Upper Limit"
+        
+      ANRIND:
+        sas_type: "character"
+        sas_length: 8
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Analysis Reference Range Indicator"
+        
+      ANL01FL:
+        sas_type: "character"
+        sas_length: 1
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Analysis Flag 01"
+        allowed_values: ["Y", "N", ""]
+        
+      SAFFL:
+        sas_type: "character"
+        sas_length: 1
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Safety Population Flag"
+        allowed_values: ["Y", "N", ""]
+        
+      TRTP:
+        sas_type: "character"
+        sas_length: 20
+        sas_format: "$CHAR."
+        python_type: "str"
+        nullable: true
+        description: "Planned Treatment"
+        
+      TRTPN:
+        sas_type: "numeric"
+        sas_length: 8
+        sas_format: "8."
+        python_type: "int"
+        nullable: true
+        description: "Planned Treatment (N)"
+
+code_translation_patterns:
+  data_step:
+    basic:
+      sas_pattern: "DATA output; SET input; RUN;"
+      python_equivalent: "output_df = input_df.copy()"
+      notes: "Simple passthrough data step"
+    
+    where_clause:
+      sas_pattern: "DATA output; SET input; WHERE condition; RUN;"
+      python_equivalent: "output_df = input_df[condition]"
+      notes: "Filter rows with WHERE clause"
+    
+    by_group:
+      sas_pattern: "DATA output; SET input; BY variable; first.variable; last.variable; RUN;"
+      python_equivalent: "output_df = input_df.groupby('variable').apply(lambda group: process_by_group(group))"
+      notes: "Process data by groups with first./last. detection"
+    
+    retain:
+      sas_pattern: "RETAIN variable1 initial_value; DATA output; SET input; ... RUN;"
+      python_equivalent: "df['variable1'] = df.groupby(level=0)['variable1'].ffill().fillna(initial_value)"
+      notes: "Carry forward values with RETAIN"
+    
+    lag:
+      sas_pattern: "variable_lag1 = LAG1(variable);"
+      python_equivalent: "df['variable_lag1'] = df['variable'].shift(1)"
+      notes: "Lag function for previous values"
+    
+    conditional_assignment:
+      sas_pattern: "IF condition THEN DO; var = value1; END; ELSE DO; var = value2; END;"
+      python_equivalent: "df['var'] = np.where(condition, value1, value2)"
+      notes: "Simple IF-THEN-ELSE can use np.where; complex logic may need apply"
+  
+  proc_sql:
+    select:
+      sas_pattern: "PROC SQL; SELECT columns FROM table WHERE condition; QUIT;"
+      python_equivalent: "result_df = df[df['condition']][['columns']]"
+      notes: "Simple SELECT with WHERE clause"
+    
+    join:
+      sas_pattern: "PROC SQL; SELECT a.*, b.var FROM a LEFT JOIN b ON a.key = b.key; QUIT;"
+      python_equivalent: "result_df = pd.merge(a_df, b_df[['key', 'var']], on='key', how='left')"
+      notes: "JOIN operations map to pd.merge()"
+    
+    group_by:
+      sas_pattern: "PROC SQL; SELECT var1, COUNT(*) FROM table GROUP BY var1; QUIT;"
+      python_equivalent: "result_df = df.groupby('var1').size().reset_index(name='count')"
+      notes: "GROUP BY with aggregation functions"
+    
+    having:
+      sas_pattern: "PROC SQL; SELECT var1, COUNT(*) FROM table GROUP BY var1 HAVING COUNT(*) > 5; QUIT;"
+      python_equivalent: "result_df = df.groupby('var1').size().reset_index(name='count')\nresult_df = result_df[result_df['count'] > 5]"
+      notes: "HAVING clause filters after GROUP BY"
+  
+  proc_summary:
+    basic:
+      sas_pattern: "PROC SUMMARY DATA=input; VAR variables; OUTPUT OUT=output MEAN= STD= MIN= MAX=; RUN;"
+      python_equivalent: "output_df = input_df[variables].agg(['mean', 'std', 'min', 'max']).reset_index()"
+      notes: "Basic summary statistics"
+    
+    by_group:
+      sas_pattern: "PROC SUMMARY DATA=input; BY variables; VAR measure_vars; OUTPUT OUT=output MEAN= STD=; RUN;"
+      python_equivalent: "output_df = input_df.groupby(variables)[measure_vars].agg(['mean', 'std']).reset_index()"
+      notes: "Summary statistics by group"
+    
+    quantiles:
+      sas_pattern: "PROC SUMMARY DATA=input; VAR variable; OUTPUT OUT=output P25= MEDIAN= P75=; RUN;"
+      python_equivalent: "output_df = input_df[variable].quantile([0.25, 0.5, 0.75])"
+      notes: "Percentiles/quantiles calculation"
+  
+  proc_format:
+    value_format:
+      sas_pattern: "PROC FORMAT; VALUE format_name value1='label1' value2='label2'; RUN;"
+      python_equivalent: "format_dict = {value1: 'label1', value2: 'label2'}\ndef apply_format(val):\n    return format_dict.get(val, 'UNEXPECTED')"
+      notes: "Implement formats as Python dictionaries"
+
+data_handling_guidelines:
+  numeric_precision:
+    description: "Handling of numeric precision in calculations"
+    sas_behavior: "SAS uses IEEE 754 double-precision (about 15-16 significant digits)"
+    python_implementation: "Use float64/double for calculations requiring high precision"
+    validation_approach: "Compare outputs with tolerance 1e-9 absolute, 1e-6 relative"
+    validation_code: |
+      def assert_close_enough(sas_value, python_value, abs_tol=1e-9, rel_tol=1e-6):
+          if pd.isna(sas_value) and pd.isna(python_value):
+              return True
+          return abs(sas_value - python_value) <= max(abs_tol, rel_tol * abs(sas_value))
+  
+  missing_value_handling:
+    description: "Treatment of missing values in calculations and comparisons"
+    sas_behavior: "Missing values are excluded from most calculations; comparisons with missing are usually false"
+    python_implementation: "Use pandas.isna() to detect missing; dropna() before aggregation; fillna() as needed"
+    special_cases:
+      - "SAS treats missing < any value, but Python np.nan comparisons are False"
+      - "SAS has special missing values (.A-.Z) that need preservation"
+    validation_approach: "Explicitly test missing value cases in parity validation"
+  
+  sort_order:
+    description: "Default sort behavior"
+    sas_behavior: "SAS sorts missing values first, then sorts character/numeric"
+    python_implementation: |
+      def sas_sort_order(df, by_vars):
+          for var in by_vars:
+              if df[var].dtype == 'O':  # object/string
+                  df[var] = pd.Categorical(df[var], ordered=True, categories=df[var].dropna().unique())
+              else:  # numeric
+                  df = df.sort_values(by_vars, na_position='first')
+          return df
+  
+  date_handling:
+    description: "Date, time, and datetime conversion"
+    sas_behavior: "SAS dates are days since 1960-01-01; datetimes are seconds since 1960-01-01"
+    python_implementation: |
+      def sas_date_to_python(sas_date):
+          if pd.isna(sas_date):
+              return None
+          return pd.to_datetime('1960-01-01') + pd.Timedelta(days=int(sas_date))
+          
+      def sas_datetime_to_python(sas_datetime):
+          if pd.isna(sas_datetime):
+              return None
+          return pd.to_datetime('1960-01-01') + pd.Timedelta(seconds=sas_datetime)
+  
+  by_group_processing:
+    description: "Processing data by groups with FIRST./LAST."
+    sas_behavior: "SAS creates FIRST.var and LAST.var flags when using BY statement"
+    python_implementation: |
+      def process_by_groups(df, group_vars):
+          result = []
+          for _, group in df.groupby(group_vars):
+              group = group.copy()
+              group['FIRST'] = False
+              group['LAST'] = False
+              group.iloc[0, group.columns.get_loc('FIRST')] = True
+              group.iloc[-1, group.columns.get_loc('LAST')] = True
+              result.append(group)
+          return pd.concat(result)
+
+conversion_libraries:
+  pyreadstat:
+    purpose: "Reading SAS datasets (.sas7bdat) and SAS transport files (.xpt)"
+    python_package: "pyreadstat"
+    install: "pip install pyreadstat"
+    usage: |
+      import pyreadstat
+      
+      df, meta = pyreadstat.read_sas7bdat('path/to/file.sas7bdat')
+      
+      df, meta = pyreadstat.read_xport('path/to/file.xpt')
+      
+      formats = meta.column_formats
+      labels = meta.column_labels
+    notes: "Preserves formats, labels, and variable types"
+  
+  pandas:
+    purpose: "Data manipulation and analysis"
+    python_package: "pandas"
+    install: "pip install pandas"
+    key_functions:
+      - "pd.merge() - for JOIN operations"
+      - "df.groupby() - for BY-group processing"
+      - "df.agg() - for summary statistics"
+      - "pd.to_datetime() - for date conversions"
+      - "df.query() - for WHERE conditions"
+  
+  numpy:
+    purpose: "Numeric calculations and missing value handling"
+    python_package: "numpy"
+    install: "pip install numpy"
+    key_functions:
+      - "np.where() - for conditional logic"
+      - "np.nan - for missing values"
+      - "np.isnan() - for missing detection"
+  
+  polars:
+    purpose: "Alternative to pandas for large datasets (optional)"
+    python_package: "polars"
+    install: "pip install polars"
+    notes: "Consider for performance optimization phase"
+
+validation_strategy:
+  dataset_validation:
+    approach: "Compare SAS output datasets with Python output datasets"
+    tools:
+      - "pandas_compare_datasets(sas_df, py_df, key_vars)"
+    tolerance:
+      numeric_abs_tol: 1.0e-9
+      numeric_rel_tol: 1.0e-6
+    required_checks:
+      - "Row counts match exactly"
+      - "Column names match (after case normalization)"
+      - "Data types are compatible"
+      - "Key values match exactly"
+      - "Non-key values match within tolerance"
+  
+  special_cases:
+    sas_date_validation:
+      description: "Validate date conversions"
+      approach: "Convert dates to ISO format strings for comparison"
+    
+    special_missing:
+      description: "Validate special missing value preservation"
+      approach: "Track original special missing codes in separate columns"
+    
+    rounding_differences:
+      description: "Handle potential rounding differences"
+      approach: "Use tolerances for numeric comparisons"
+  
+  parity_test_fixtures:
+    types:
+      - "Golden datasets with known values"
+      - "Small test datasets with edge cases"
+      - "Modified datasets for comparison testing"
+    location: "tests/fixtures/"
+    creation: "Extract representative samples from production data"
+
+implementation_recommendations:
+  performance:
+    - "Use vectorized operations instead of loops where possible"
+    - "Process large datasets in chunks"
+    - "Consider Polars for very large datasets"
+  
+  maintainability:
+    - "Document all SAS-to-Python translations in code comments"
+    - "Preserve variable names, labels, and formats"
+    - "Create utility functions for common SAS patterns"
+  
+  debugging:
+    - "Create data_quality.py module with assert functions"
+    - "Log row counts at each processing step"
+    - "Validate outputs against SAS golden datasets"
+  
+  phased_approach:
+    - "Start with core data reading capabilities"
+    - "Implement comparison utilities next for validation"
+    - "Translate statistical calculations with thorough testing"
+    - "Finally implement visualization components"
