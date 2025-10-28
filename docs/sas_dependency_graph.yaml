@@ -1,0 +1,347 @@
+
+workflows:
+  phuse_boxplot_analysis:
+    description: "PhUSE-compliant box plot generation for clinical measurements by visit and treatment"
+    entry_point: programs/example_phuse_whitepapers/example_call_wpct-f.07.01.sas
+    execution_order:
+      - step: 1_initialization
+        script: programs/example_phuse_whitepapers/example_call_wpct-f.07.01.sas
+        description: "Initialize environment, set paths, load test data"
+        dependencies:
+          external_repos:
+            - phuse-scripts/whitepapers/utilities
+            - phuse-scripts/data/adam/cdisc-split/
+          macros_required: [util_access_test_data]
+          creates:
+            - work.ADLBC (with dummy ATPTN, ATPT variables)
+        outputs:
+          - dataset: work.ADLBC
+            type: temporary
+      
+      - step: 2_main_analysis
+        script: programs/example_phuse_whitepapers/WPCT-F.07.01.sas
+        description: "Generate box plots with statistical summaries"
+        dependencies:
+          previous_steps: [1_initialization]
+          input_datasets: [work.ADLBC]
+          macros_required:
+            - util_labels_from_var
+            - util_count_unique_values
+            - util_get_reference_lines
+            - util_proc_template
+            - util_get_var_min_max
+            - util_value_format
+            - util_boxplot_block_ranges
+            - util_axis_order
+            - util_delete_dsets
+            - assert_depend
+            - assert_continue
+          internal_macros: [boxplot_each_param_tp]
+        processing_steps:
+          - "Apply PROC FORMAT for treatment abbreviations"
+          - "Subset data by parameters (ALB) and visits (0,2,4,6)"
+          - "Create trtp_short treatment abbreviations"
+          - "Filter by population (saffl=Y) and analysis (anl01fl=Y) flags"
+          - "Detect outliers outside normal range (ANRLO, ANRHI)"
+          - "Calculate summary statistics by visit and treatment"
+          - "Generate box plots using PROC SGRENDER with PhUSEboxplot template"
+          - "Output to PDF with pagination (max 20 boxes per page)"
+        outputs:
+          - path: results/*.pdf
+            type: visualization
+            description: "Box plots by parameter, visit, and treatment"
+    
+    translation_priority: high
+    migration_status: partially_migrated
+    python_equivalent: airflow_migration/
+
+  dataset_comparison_qc:
+    description: "Quality control dataset comparison for validation"
+    entry_point: programs/example_compare/test_compare_macros.sas
+    execution_order:
+      - step: 1_setup
+        script: programs/example_compare/test_compare_macros.sas
+        description: "Set up libraries and load comparison macros"
+        dependencies:
+          include_paths:
+            - tools/downloads/roland_utilmacros
+            - external: SASScottBass/Macro (not in repo)
+          macros_required: [compvars, complibs, compare]
+        processing_steps:
+          - "Define LIBNAME adam pointing to data/adam"
+          - "Define LIBNAME adam_mod pointing to data/adam/mod_01"
+          - "Set SASAUTOS path to include Roland utility macros"
+      
+      - step: 2_variable_comparison
+        description: "Compare variable lists between datasets"
+        macro: "%compvars(ds1, ds2)"
+        inputs: [adam.adtte, adam_mod.adtte]
+        outputs:
+          macro_vars:
+            - _left_: "Variables in ds1 only"
+            - _right_: "Variables in ds2 only"
+            - _both_: "Variables in both datasets"
+        use_case: "Identify schema changes"
+      
+      - step: 3_library_comparison
+        description: "Compare all matching datasets in two libraries"
+        macro: "%complibs(libold, libnew, sortvars=)"
+        inputs: [adam, adam_mod]
+        required_params: [sortvars]
+        outputs:
+          - log_output: "Comparison summary for all matching datasets"
+        use_case: "Batch comparison across entire library"
+      
+      - step: 4_detailed_comparison
+        description: "Detailed record-level comparison with BY groups"
+        macro: "%compare(base=, comp=, by=)"
+        inputs: [adam.adtte, adam_mod.adtte]
+        by_vars: [usubjid]
+        outputs:
+          - log_output: "Detailed PROC COMPARE output with differences"
+        use_case: "Identify specific observation and value changes"
+    
+    translation_priority: medium
+    migration_status: not_migrated
+    python_equivalent: null
+
+  test_data_generation:
+    description: "Create modified test datasets for comparison validation"
+    entry_point: programs/drafts/CreateCompareTestData.sas
+    execution_order:
+      - step: 1_create_modified_data
+        script: programs/drafts/CreateCompareTestData.sas
+        description: "Generate test datasets with controlled differences"
+        dependencies:
+          input_datasets: [adam.adsl, adam.adae, adam.advs, adam.adtte]
+        processing_steps:
+          - "Remove sort order from original datasets"
+          - "Create modified versions with:"
+          - "  - Variable changes (drop saffl, add newvar)"
+          - "  - Observation deletions (every 17th record)"
+          - "  - Value modifications (specific records)"
+          - "  - Duplicate records"
+        outputs:
+          - path: data/adam/mod_01/
+            datasets: [adsl, adae, advs, adtte, new]
+    
+    translation_priority: low
+    migration_status: not_migrated
+    python_equivalent: null
+
+  data_import_utilities:
+    description: "Import SAS transport files (XPT) to SAS datasets"
+    entry_point: programs/drafts/xpt2sas_adam_sdtm.sas
+    execution_order:
+      - step: 1_import_xpt
+        script: programs/drafts/xpt2sas_adam_sdtm.sas
+        description: "Convert XPT transport files to SAS datasets"
+        macro: "%drive(dir, ext, out)"
+        dependencies:
+          proc: COPY
+          engine: XPORT
+        use_case: "Initial data loading from CDISC transport files"
+    
+    translation_priority: low
+    migration_status: not_migrated
+    python_equivalent: "Use pyreadstat.read_xport() in Python"
+
+macro_dependencies:
+  phuse_utilities:
+    source: external
+    repository: "https://github.com/phuse-org/phuse-scripts/tree/master/whitepapers/utilities"
+    status: not_in_repo
+    macros:
+      - util_access_test_data:
+          purpose: "Load test data from remote or local location"
+          used_by: [example_call_wpct-f.07.01.sas]
+      - util_labels_from_var:
+          purpose: "Extract unique parameter codes and labels"
+          used_by: [WPCT-F.07.01.sas]
+          creates_macro_vars: [PARAMCD_N, PARAMCD_VAL1..N, PARAMCD_LAB1..N]
+      - util_count_unique_values:
+          purpose: "Count distinct values of a variable"
+          used_by: [WPCT-F.07.01.sas]
+          creates_macro_vars: [TRTN]
+      - util_get_reference_lines:
+          purpose: "Calculate reference lines for plots"
+          used_by: [WPCT-F.07.01.sas]
+          options: [NONE, UNIFORM, NARROW, ALL, numeric-values]
+      - util_proc_template:
+          purpose: "Compile PhUSE box plot template"
+          used_by: [WPCT-F.07.01.sas]
+          template: phuseboxplot
+      - util_get_var_min_max:
+          purpose: "Determine axis ranges"
+          used_by: [WPCT-F.07.01.sas]
+      - util_value_format:
+          purpose: "Format statistical values with appropriate precision"
+          used_by: [WPCT-F.07.01.sas]
+      - util_boxplot_block_ranges:
+          purpose: "Paginate visits into plot pages"
+          used_by: [WPCT-F.07.01.sas]
+      - util_axis_order:
+          purpose: "Calculate axis tick intervals"
+          used_by: [WPCT-F.07.01.sas]
+      - util_delete_dsets:
+          purpose: "Clean up temporary datasets"
+          used_by: [WPCT-F.07.01.sas]
+      - assert_depend:
+          purpose: "Validate dependencies before execution"
+          used_by: [WPCT-F.07.01.sas]
+      - assert_continue:
+          purpose: "Check if processing should continue"
+          used_by: [WPCT-F.07.01.sas]
+
+  roland_utilities:
+    source: internal
+    location: tools/downloads/roland_utilmacros/
+    website: "http://www.datasavantconsulting.com/roland/Spectre/download.html"
+    macros:
+      - compvars:
+          purpose: "Compare variable lists between two datasets"
+          used_by: [test_compare_macros.sas]
+          creates_macro_vars: [_left_, _right_, _both_]
+      - complibs:
+          purpose: "Compare all matching datasets in two libraries"
+          used_by: [test_compare_macros.sas]
+          requires: [sortvars parameter]
+      - compare:
+          purpose: "Universal comparison wrapper using PROC COMPARE"
+          used_by: [test_compare_macros.sas]
+          supports: [datasets, libraries, BY variables]
+    
+    additional_utilities:
+      count: 193+
+      categories: [file operations, string manipulation, data validation, formatting]
+
+  sasbass_utilities:
+    source: external
+    repository: "SASScottBass/Macro"
+    status: not_in_repo
+    used_by: [test_compare_macros.sas]
+    note: "Referenced but not critical; comparison macros work without it"
+
+libname_dependencies:
+  adam:
+    path: data/adam/
+    contains: "ADaM clinical trial datasets"
+    datasets: [adsl, adae, advs, adtte, adlbc, adlbh, adadas, adcibc, adnpix, etc.]
+    depends_on: []
+  
+  adam_mod:
+    path: data/adam/mod_01/
+    contains: "Modified test datasets for QC validation"
+    datasets: [adsl, adae, advs, adtte, new]
+    depends_on: [adam]
+    purpose: "Comparison testing"
+  
+  work:
+    type: temporary
+    contains: "Intermediate processing datasets"
+    created_by:
+      - example_call_wpct-f.07.01.sas: [ADLBC with dummy timepoint vars]
+      - WPCT-F.07.01.sas: [css_anadata, css_stats, intermediate datasets]
+
+proc_dependencies:
+  FORMAT:
+    used_in: [WPCT-F.07.01.sas]
+    purpose: "Define treatment abbreviation format (trt_short)"
+  
+  SUMMARY:
+    used_in: [WPCT-F.07.01.sas]
+    purpose: "Calculate summary statistics by visit and treatment"
+    outputs: [n, mean, std, median, min, max, q1, q3]
+  
+  SGRENDER:
+    used_in: [WPCT-F.07.01.sas]
+    purpose: "Render box plots using PhUSEboxplot template"
+    requires: [ODS Graphics, template definition]
+  
+  COMPARE:
+    used_in: [test_compare_macros.sas]
+    purpose: "Detailed dataset comparison for QC"
+    supports: [BY variables, variable-level comparison]
+  
+  COPY:
+    used_in: [xpt2sas_adam_sdtm.sas]
+    purpose: "Copy datasets from XPORT engine"
+
+translation_order:
+  phase_1_data_access:
+    priority: 1
+    description: "Foundation - data reading capabilities"
+    tasks:
+      - "Implement SAS dataset readers (pyreadstat)"
+      - "Implement XPT transport file readers"
+      - "Handle SAS date/datetime/time formats"
+      - "Handle SAS missing values (., .A-.Z)"
+      - "Preserve metadata (labels, formats)"
+  
+  phase_2_phuse_utilities:
+    priority: 2
+    description: "Core PhUSE utility functions"
+    depends_on: [phase_1_data_access]
+    status: partially_complete
+    location: airflow_migration/utils/phuse_utils.py
+    remaining_tasks:
+      - "Verify all PhUSE utilities are implemented"
+      - "Add comprehensive unit tests"
+      - "Document parameter mappings"
+  
+  phase_3_phuse_boxplot:
+    priority: 3
+    description: "PhUSE box plot workflow"
+    depends_on: [phase_2_phuse_utilities]
+    status: partially_complete
+    location: airflow_migration/
+    remaining_tasks:
+      - "Complete parity validation"
+      - "Add configuration flexibility"
+      - "Document output differences"
+      - "Performance optimization"
+  
+  phase_4_comparison_utilities:
+    priority: 4
+    description: "Dataset comparison for QC"
+    depends_on: [phase_1_data_access]
+    status: not_started
+    tasks:
+      - "Implement compvars (variable list comparison)"
+      - "Implement complibs (library comparison)"
+      - "Implement detailed comparison (PROC COMPARE equivalent)"
+      - "Add parity tests using mod_01 test data"
+  
+  phase_5_packaging:
+    priority: 5
+    description: "Packaging and deployment"
+    depends_on: [phase_3_phuse_boxplot, phase_4_comparison_utilities]
+    tasks:
+      - "Create unified Python package"
+      - "Add CLI entrypoints"
+      - "CI/CD pipeline"
+      - "Documentation"
+      - "Migration guide"
+
+translation_scope_decisions:
+  include:
+    - "PhUSE box plot workflow (WPCT-F.07.01.sas)"
+    - "Dataset comparison utilities (test_compare_macros.sas)"
+    - "Core PhUSE utility functions"
+    - "Data access and format handling"
+  
+  exclude:
+    - "FDA Jumpstart scripts (not in repo, requires sponsorship)"
+    - "One-time utility scripts in programs/drafts/"
+    - "Roland utility macro library (193+ utilities - too broad)"
+  
+  optional:
+    - "Test data generation (CreateCompareTestData.sas)"
+    - "XPT import utilities (single-use, low priority)"
+
+notes:
+  - "PhUSE utilities are external dependencies not included in repo"
+  - "Existing PySpark migration covers PhUSE box plot workflow only"
+  - "Dataset comparison utilities need complete Python implementation"
+  - "Roland utility macros are extensive (193+ files) - only migrate what's needed"
+  - "Focus on reproducing exact SAS output for regulatory compliance"
