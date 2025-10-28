@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "sas2py"
+version = "0.1.0"
+description = "SAS to Python migration"
+authors = ["Daniella Grimberg <daniella.grimberg@cognition.ai>"]
+readme = "README.md"
+packages = [{include = "sas2py", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+pandas = "^2.2"
+pyreadstat = "^1.2"
+sqlalchemy = "^2.0"
+openpyxl = "^3.1"
+statsmodels = "^0.14"
+scikit-learn = "^1.5"
+plotly = "^5.18.0"
+pyarrow = "^14.0.1"
+numpy = "^1.26.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2"
+pytest-xdist = "^3.6"
+pytest-regressions = "^2.5"
+black = "^24.3"
+ruff = "^0.5"
+mypy = "^1.10"
+nbval = "^0.10.0"
+
+[tool.ruff]
+select = ["E","F","I","B","W"]
+line-length = 100
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+compare-datasets = "sas2py.compare.cli:compare_datasets_cli"
+phuse-boxplot = "sas2py.phuse.cli:generate_boxplots_cli"
