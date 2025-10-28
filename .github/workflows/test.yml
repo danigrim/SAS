@@ -31,7 +31,7 @@ jobs:
         poetry run pytest -xvs tests/
     - name: Run parity tests
       run: |
-        poetry run pytest -xvs tests/parity/ --no-skip
+        poetry run pytest -xvs tests/parity/
         
   parity:
     runs-on: ubuntu-latest
