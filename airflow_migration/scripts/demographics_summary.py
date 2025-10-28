@@ -10,7 +10,6 @@ SAS equivalent: programs/example_simple/demographics_summary.sas
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import count, mean, stddev, min as spark_min, max as spark_max, col
-import yaml
 import os
 
 
