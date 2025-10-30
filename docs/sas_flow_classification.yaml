@@ -1,0 +1,484 @@
+
+flow_classification:
+  phuse_boxplot_workflow:
+    system: "PhUSE Visualization System"
+    location: programs/example_phuse_whitepapers/
+    primary_scripts:
+      - example_call_wpct-f.07.01.sas
+      - WPCT-F.07.01.sas
+    
+    flow_type_breakdown:
+      etl_component:
+        percentage: 20
+        description: "Data loading and initial preparation"
+        steps:
+          - name: "Load test data"
+            script: example_call_wpct-f.07.01.sas
+            operation: "%util_access_test_data(&ds, local=...)"
+            purpose: "Load ADLBC dataset from PhUSE test data"
+            classification: ETL
+          
+          - name: "Add dummy timepoint variables"
+            script: example_call_wpct-f.07.01.sas
+            operation: "DATA &ds; SET &ds; ATPTN=1; ATPT='TimePoint unknown'; RUN;"
+            purpose: "Augment test data with required variables"
+            classification: ETL
+          
+          - name: "Subset by parameters and visits"
+            script: WPCT-F.07.01.sas
+            operation: "data &ds._sub; set work.&ds; where (paramcd in (&param) &cond);"
+            purpose: "Filter to specific parameters (ALB) and visits (0,2,4,6)"
+            classification: ETL
+      
+      feature_engineering:
+        percentage: 30
+        description: "Data transformation and feature creation"
+        steps:
+          - name: "Create treatment abbreviations"
+            script: WPCT-F.07.01.sas
+            operation: "PROC FORMAT; value trt_short 0='P' 54='X-high' 81='X-low';"
+            purpose: "Define treatment abbreviation format"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Apply treatment abbreviations"
+            script: WPCT-F.07.01.sas
+            operation: "trtp_short = put(&tn_var, trt_short.);"
+            purpose: "Create shortened treatment names for display"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Filter by population flags"
+            script: WPCT-F.07.01.sas
+            operation: "where &p_fl='Y' and &a_fl='Y';"
+            purpose: "Select safety population and analysis records"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Detect outliers"
+            script: WPCT-F.07.01.sas
+            operation: "if (&m_var < &lo_var) or (&m_var > &hi_var) then m_var_outlier = &m_var;"
+            purpose: "Flag measurements outside normal range"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Extract parameter metadata"
+            script: WPCT-F.07.01.sas
+            operation: "%util_labels_from_var(css_anadata, paramcd, param)"
+            purpose: "Get parameter codes and labels for iteration"
+            classification: FEATURE_ENGINEERING
+      
+      statistical_model:
+        percentage: 30
+        description: "Statistical calculations and aggregations"
+        steps:
+          - name: "Calculate summary statistics"
+            script: WPCT-F.07.01.sas
+            operation: "PROC SUMMARY; by avisitn &tn_var avisit &t_var; var &m_var; output n=n mean=mean std=std median=median min=datamin max=datamax q1=q1 q3=q3;"
+            purpose: "Compute descriptive statistics by visit and treatment"
+            classification: STATISTICAL_MODEL
+            statistics: [n, mean, std, median, min, max, q1, q3]
+          
+          - name: "Calculate reference lines"
+            script: WPCT-F.07.01.sas
+            operation: "%util_get_reference_lines(...)"
+            purpose: "Determine normal range reference lines (UNIFORM/NARROW/ALL)"
+            classification: STATISTICAL_MODEL
+          
+          - name: "Determine axis ranges"
+            script: WPCT-F.07.01.sas
+            operation: "%util_get_var_min_max(...)"
+            purpose: "Calculate appropriate Y-axis bounds"
+            classification: STATISTICAL_MODEL
+          
+          - name: "Format statistical values"
+            script: WPCT-F.07.01.sas
+            operation: "%util_value_format(...)"
+            purpose: "Apply precision rules (mean +1 decimal, std +2 decimals)"
+            classification: STATISTICAL_MODEL
+      
+      report:
+        percentage: 20
+        description: "Visualization and output generation"
+        steps:
+          - name: "Prepare plot template"
+            script: WPCT-F.07.01.sas
+            operation: "%util_proc_template(phuseboxplot)"
+            purpose: "Compile PhUSE box plot template for SGRENDER"
+            classification: REPORT
+          
+          - name: "Calculate pagination"
+            script: WPCT-F.07.01.sas
+            operation: "%util_boxplot_block_ranges(...)"
+            purpose: "Divide visits into pages (max 20 boxes per page)"
+            classification: REPORT
+          
+          - name: "Generate box plots"
+            script: WPCT-F.07.01.sas
+            operation: "PROC SGRENDER data=css_plot template=PhUSEboxplot;"
+            purpose: "Render box plots with statistical annotations"
+            classification: REPORT
+          
+          - name: "Output to PDF"
+            script: WPCT-F.07.01.sas
+            operation: "ODS PDF file='&outputs_folder/WPCT-F.07.01_*.pdf';"
+            purpose: "Write paginated PDF output"
+            classification: REPORT
+    
+    primary_purpose: REPORT
+    regulatory_compliance: true
+    notes:
+      - "PhUSE-compliant clinical trial visualization"
+      - "Follows FDA/EMA standards for box plots in clinical study reports"
+      - "Focus on presentation quality and statistical accuracy"
+
+  dataset_comparison_workflow:
+    system: "Dataset Comparison System (PRIMARY SYSTEM)"
+    location: programs/example_compare/
+    importance: 18.39
+    primary_script: test_compare_macros.sas
+    
+    flow_type_breakdown:
+      etl_component:
+        percentage: 10
+        description: "Library setup and data access"
+        steps:
+          - name: "Define libraries"
+            script: test_compare_macros.sas
+            operation: "LIBNAME adam '&base/data/adam'; LIBNAME adam_mod '&base/data/adam/mod_01';"
+            purpose: "Set up access to baseline and modified datasets"
+            classification: ETL
+          
+          - name: "Copy to WORK for testing"
+            script: test_compare_macros.sas
+            operation: "DATA addte; SET adam.adtte; RUN;"
+            purpose: "Create temporary copies for comparison tests"
+            classification: ETL
+      
+      feature_engineering:
+        percentage: 0
+        description: "No feature engineering - pure comparison workflow"
+        steps: []
+      
+      statistical_model:
+        percentage: 0
+        description: "No statistical modeling - QC validation only"
+        steps: []
+      
+      report:
+        percentage: 90
+        description: "Quality control comparison and reporting"
+        steps:
+          - name: "Compare variable lists"
+            script: test_compare_macros.sas
+            operation: "%compvars(&ds1, &ds2)"
+            purpose: "Identify schema differences (variables added/removed)"
+            classification: REPORT
+            outputs: [_left_, _right_, _both_ macro variables]
+          
+          - name: "Compare libraries"
+            script: test_compare_macros.sas
+            operation: "%complibs(adam, adam_mod, sortvars=usubjid)"
+            purpose: "Batch comparison across all matching datasets"
+            classification: REPORT
+            outputs: [log output with comparison summaries]
+          
+          - name: "Detailed record comparison"
+            script: test_compare_macros.sas
+            operation: "%compare(base=adam.adtte, comp=adam_mod.adtte, by=usubjid)"
+            purpose: "Identify specific observation and value differences"
+            classification: REPORT
+            outputs: [PROC COMPARE detailed output]
+          
+          - name: "Output comparison results"
+            script: test_compare_macros.sas
+            operation: "%put NOTE: Variables found in &ds1 but not &ds2: &_left_;"
+            purpose: "Report differences to SAS log"
+            classification: REPORT
+    
+    primary_purpose: REPORT
+    secondary_purpose: ETL
+    use_case: "Quality Control"
+    notes:
+      - "Pure QC validation workflow - no transformations or modeling"
+      - "Used by Quality Control Analysts to validate data transformations"
+      - "Critical for regulatory compliance and data integrity"
+      - "Importance score 18.39 indicates highest priority system"
+
+  test_data_generation_workflow:
+    system: "Test Data Generation Utility"
+    location: programs/drafts/
+    primary_script: CreateCompareTestData.sas
+    
+    flow_type_breakdown:
+      etl_component:
+        percentage: 30
+        description: "Read original data and setup"
+        steps:
+          - name: "Define libraries"
+            script: CreateCompareTestData.sas
+            operation: "LIBNAME adam '&base/data/adam'; LIBNAME adam_mod '&base/data/adam/mod_01';"
+            purpose: "Access source and target directories"
+            classification: ETL
+          
+          - name: "Remove sort order"
+            script: CreateCompareTestData.sas
+            operation: "DATA adam.adsl; SET adam.adsl; RUN;"
+            purpose: "Clear dataset sort metadata"
+            classification: ETL
+      
+      feature_engineering:
+        percentage: 70
+        description: "Create controlled test differences"
+        steps:
+          - name: "Drop variables"
+            script: CreateCompareTestData.sas
+            operation: "SET adam.adtte(DROP=saffl);"
+            purpose: "Simulate variable removal"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Add variables"
+            script: CreateCompareTestData.sas
+            operation: "ATTRIB newvar FORMAT=$10.;"
+            purpose: "Simulate variable addition"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Delete observations"
+            script: CreateCompareTestData.sas
+            operation: "IF MOD(_N_,17)=0 THEN DELETE;"
+            purpose: "Simulate data loss (every 17th record)"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Modify values"
+            script: CreateCompareTestData.sas
+            operation: "IF _N_=11 THEN DO; CALL MISSING(race,aval); race='white'; END;"
+            purpose: "Simulate value changes"
+            classification: FEATURE_ENGINEERING
+          
+          - name: "Duplicate records"
+            script: CreateCompareTestData.sas
+            operation: "IF _N_=20 THEN DO; usubjid='01-705-1185'; OUTPUT; END;"
+            purpose: "Simulate duplicate creation"
+            classification: FEATURE_ENGINEERING
+      
+      statistical_model:
+        percentage: 0
+        description: "No statistical modeling - test data generation only"
+        steps: []
+      
+      report:
+        percentage: 0
+        description: "No reporting - outputs test datasets"
+        steps: []
+    
+    primary_purpose: FEATURE_ENGINEERING
+    use_case: "Test Data Creation"
+    notes:
+      - "Utility script to create known-difference test datasets"
+      - "Supports validation of comparison macros"
+      - "Not part of production workflow"
+      - "Low priority for migration"
+
+  xpt_import_workflow:
+    system: "Data Import Utility"
+    location: programs/drafts/
+    primary_script: xpt2sas_adam_sdtm.sas
+    
+    flow_type_breakdown:
+      etl_component:
+        percentage: 100
+        description: "Pure data import from transport files"
+        steps:
+          - name: "Scan directory for XPT files"
+            script: xpt2sas_adam_sdtm.sas
+            operation: "%macro drive(dir, ext, out); LIBNAME old xport '&dir/file.xpt';"
+            purpose: "Locate and open transport files"
+            classification: ETL
+          
+          - name: "Import via PROC COPY"
+            script: xpt2sas_adam_sdtm.sas
+            operation: "PROC COPY in=old out=new; RUN;"
+            purpose: "Convert XPT to SAS datasets"
+            classification: ETL
+      
+      feature_engineering:
+        percentage: 0
+        description: "No transformations - pure import"
+        steps: []
+      
+      statistical_model:
+        percentage: 0
+        description: "No statistical modeling"
+        steps: []
+      
+      report:
+        percentage: 0
+        description: "No reporting - outputs datasets"
+        steps: []
+    
+    primary_purpose: ETL
+    use_case: "One-time Data Import"
+    notes:
+      - "One-time utility for initial data loading"
+      - "CDISC transport file standard"
+      - "Easily replaced with pyreadstat.read_xport() in Python"
+      - "Low priority for migration"
+
+  airflow_pyspark_migration:
+    system: "Airflow Migration Framework"
+    location: airflow_migration/
+    status: "Partial Python implementation of PhUSE workflow"
+    
+    flow_type_breakdown:
+      etl_component:
+        percentage: 40
+        description: "Data ingestion and preprocessing"
+        steps:
+          - name: "Data ingestion"
+            script: scripts/data_ingestion.py
+            operation: "spark.read.format('sas').load()"
+            purpose: "Load SAS datasets into Spark DataFrames"
+            classification: ETL
+            python_equivalent: true
+          
+          - name: "Outlier detection"
+            script: scripts/data_ingestion.py
+            operation: "detect_outliers(df, measure_var, low_var, high_var)"
+            purpose: "Flag measurements outside normal range"
+            classification: ETL
+            python_equivalent: true
+          
+          - name: "Data preprocessing"
+            script: scripts/data_preprocessing.py
+            operation: "df.filter(F.col('paramcd').isin(parameters))"
+            purpose: "Filter by parameters, visits, population flags"
+            classification: ETL
+            python_equivalent: true
+          
+          - name: "Create treatment abbreviations"
+            script: scripts/data_preprocessing.py
+            operation: "abbreviate_treatment_udf()"
+            purpose: "Apply treatment name abbreviations via UDF"
+            classification: ETL
+            python_equivalent: true
+      
+      feature_engineering:
+        percentage: 10
+        description: "Minimal feature engineering"
+        steps:
+          - name: "Partition by parameter"
+            script: scripts/data_preprocessing.py
+            operation: "df.repartition('paramcd')"
+            purpose: "Optimize for distributed processing"
+            classification: FEATURE_ENGINEERING
+            python_equivalent: true
+      
+      statistical_model:
+        percentage: 30
+        description: "Summary statistics calculation"
+        steps:
+          - name: "Calculate statistics"
+            script: scripts/statistical_analysis.py
+            operation: "df.groupBy().agg(F.count(), F.mean(), F.stddev(), F.expr('percentile_approx'))"
+            purpose: "Compute n, mean, std, median, min, max, q1, q3"
+            classification: STATISTICAL_MODEL
+            python_equivalent: true
+            parity_status: "Needs validation"
+      
+      report:
+        percentage: 20
+        description: "Interactive visualization generation"
+        steps:
+          - name: "Generate Plotly box plots"
+            script: scripts/visualization.py
+            operation: "go.Figure().add_trace(go.Box())"
+            purpose: "Create interactive HTML box plots"
+            classification: REPORT
+            python_equivalent: true
+            difference: "Interactive HTML instead of static PDF"
+          
+          - name: "Add reference lines"
+            script: scripts/visualization.py
+            operation: "fig.add_shape(type='line')"
+            purpose: "Display normal range reference lines"
+            classification: REPORT
+            python_equivalent: true
+          
+          - name: "Output visualization"
+            script: scripts/visualization.py
+            operation: "fig.write_html(), fig.write_image()"
+            purpose: "Save as HTML and PNG"
+            classification: REPORT
+            python_equivalent: true
+            difference: "HTML/PNG instead of PDF"
+    
+    primary_purpose: REPORT
+    migration_target: "PhUSE box plot workflow only"
+    python_coverage: "~60%"
+    gaps:
+      - "PhUSE utility functions not fully tested"
+      - "Parity validation incomplete"
+      - "Configuration less flexible than SAS version"
+      - "Dataset comparison utilities not migrated"
+    notes:
+      - "Modern replacement using PySpark and Plotly"
+      - "Preserves core statistical logic"
+      - "Adds interactivity and scalability"
+      - "Requires parity validation"
+
+summary:
+  total_workflows: 5
+  by_primary_purpose:
+    ETL: 1
+    FEATURE_ENGINEERING: 1
+    STATISTICAL_MODEL: 0
+    REPORT: 3
+  
+  migration_priorities:
+    high_priority:
+      - workflow: phuse_boxplot_workflow
+        reason: "Core clinical visualization for regulatory submissions"
+        status: "Partially migrated to PySpark/Airflow"
+        complexity: HIGH
+      
+      - workflow: dataset_comparison_workflow
+        reason: "PRIMARY SYSTEM (importance 18.39) for QC validation"
+        status: "Not migrated"
+        complexity: MEDIUM
+    
+    medium_priority:
+      - workflow: airflow_pyspark_migration
+        reason: "Complete and validate existing Python implementation"
+        status: "Needs parity testing and documentation"
+        complexity: MEDIUM
+    
+    low_priority:
+      - workflow: test_data_generation_workflow
+        reason: "Utility script, not production workflow"
+        status: "Not needed for migration"
+        complexity: LOW
+      
+      - workflow: xpt_import_workflow
+        reason: "One-time import, easily replaced"
+        status: "Use pyreadstat.read_xport() instead"
+        complexity: LOW
+
+  complexity_factors:
+    high_complexity:
+      - "PhUSE utility macro dependencies (11 external macros)"
+      - "PROC SGRENDER template system"
+      - "ODS PDF output formatting"
+      - "Regulatory compliance requirements"
+    
+    medium_complexity:
+      - "PROC COMPARE exact replication"
+      - "Macro variable handling (_left_, _right_, _both_)"
+      - "Log output formatting"
+    
+    low_complexity:
+      - "Data format conversions (SAS dates, missing values)"
+      - "File I/O operations"
+      - "Basic statistical calculations"
+
+  recommended_approach:
+    phase_1: "Complete parity validation of existing PySpark PhUSE migration"
+    phase_2: "Implement dataset comparison utilities in Python (pandas-based)"
+    phase_3: "Create unified Python package with both systems"
+    phase_4: "Add comprehensive testing and CI/CD"
+    phase_5: "Documentation and migration guide"

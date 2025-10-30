@@ -1,0 +1,197 @@
+sas:
+  version: unknown
+  notes: "SAS version not explicitly documented in code. Need to verify with user. Likely 9.4 based on common usage patterns."
+  licensed_procs: [FORMAT, SUMMARY, SGRENDER, COMPARE, SQL]
+  os: Linux
+  entrypoints:
+    - path: programs/example_phuse_whitepapers/example_call_wpct-f.07.01.sas
+      description: "Initialization script - sets up paths, loads test data, creates dummy timepoint variables"
+      dependencies: [PhUSE utilities]
+    - path: programs/example_phuse_whitepapers/WPCT-F.07.01.sas
+      description: "PhUSE box plot generation - main analysis script for clinical measurements by visit/treatment"
+      dependencies: [PhUSE utilities, SGRENDER]
+    - path: programs/example_compare/test_compare_macros.sas
+      description: "Dataset comparison utilities using %compvars, %complibs, %compare macros"
+      dependencies: [Roland utility macros]
+  include_paths:
+    - tools/downloads/roland_utilmacros
+    - external: phuse-scripts/whitepapers/utilities (referenced but not in repo)
+    - external: SASScottBass/Macro (referenced but not in repo)
+  catalogs: []
+  formats:
+    - name: trt_short
+      description: "Treatment abbreviations: 0='P', 54='X-high', 81='X-low'"
+      location: programs/example_phuse_whitepapers/WPCT-F.07.01.sas
+  macros:
+    roland_utilities:
+      - compvars: "Compare variable lists between two datasets"
+      - complibs: "Compare all matching datasets in two libraries"
+      - compare: "Universal comparison using PROC COMPARE"
+    phuse_utilities:
+      - util_labels_from_var: "Extract parameter codes and labels"
+      - util_count_unique_values: "Count distinct values"
+      - util_get_reference_lines: "Calculate reference lines for plots"
+      - util_proc_template: "Process box plot template"
+      - util_get_var_min_max: "Determine axis ranges"
+      - util_value_format: "Format statistical values"
+      - util_boxplot_block_ranges: "Paginate visits for plots"
+      - util_axis_order: "Calculate axis tick intervals"
+    internal:
+      - boxplot_each_param_tp: "Main macro for iterating through parameters and timepoints"
+  libnames:
+    - name: adam
+      path: "data/adam"
+      description: "ADaM (Analysis Data Model) clinical trial datasets in CDISC format"
+    - name: adam_mod
+      path: "data/adam/mod_01"
+      description: "Modified test datasets for comparison validation"
+    - name: work
+      description: "Temporary working library for intermediate datasets"
+
+data:
+  sources:
+    - type: files
+      format: sas7bdat
+      location: data/adam
+      size_mb: 102
+      datasets:
+        - adsl: "Subject-Level Analysis Dataset - demographics, treatment, population flags"
+        - adae: "Adverse Events Analysis Dataset"
+        - advs: "Vital Signs Analysis Dataset"
+        - adtte: "Time-to-Event Analysis Dataset"
+        - adlbc: "Laboratory Blood Chemistry"
+        - adlbh: "Laboratory Hematology"
+        - adlbhy: "Laboratory Hematology (Hy variant)"
+        - adlbhpv: "Laboratory Blood Chemistry (HPV variant)"
+        - adlbcpv: "Laboratory Blood Chemistry (CPV variant)"
+        - adadas: "ADAS Cognitive Assessment"
+        - adcibc: "CIBIC Assessment"
+        - adnpix: "NPI-X Assessment"
+    - type: files
+      format: sas7bdat
+      location: data/sdtm
+      size_mb: 62
+      datasets: "SDTM (Study Data Tabulation Model) datasets: DM, AE, VS, CM, EX, etc."
+    - type: files
+      format: sas7bdat
+      location: data/adam/mod_01
+      description: "Modified test data for comparison validation"
+      datasets: [adsl, adae, advs, adtte, new]
+  key_variables:
+    - USUBJID: "Unique subject identifier - merge key"
+    - PARAMCD: "Parameter code (short)"
+    - PARAM: "Parameter label (descriptive)"
+    - AVISITN: "Analysis visit number (for sorting)"
+    - AVISIT: "Analysis visit label (for display)"
+    - AVAL: "Analysis value - primary numeric measurement"
+    - ANRLO: "Analysis normal range low"
+    - ANRHI: "Analysis normal range high"
+    - SAFFL: "Safety population flag"
+    - ITTFL: "Intent-to-Treat population flag"
+    - FASFL: "Full Analysis Set population flag"
+    - TRTP: "Planned treatment"
+    - TRTPN: "Planned treatment number"
+    - ATPT: "Analysis timepoint"
+    - ATPTN: "Analysis timepoint number"
+  row_counts:
+    total_lines: 49326
+    note: "Approximate count from wc -l across all adam datasets"
+  standards: "CDISC ADaM and SDTM standards for clinical trial data"
+
+outputs:
+  formats: [PDF, XLSX, HTML, RTF]
+  locations:
+    - results/
+    - results/FDAJumpstartExampleOutputs/
+  types:
+    - "Box plots showing treatment comparisons by visit (PDF)"
+    - "Statistical summary tables (Excel/HTML/RTF)"
+    - "Dataset comparison reports (log output)"
+    - "TFLs (Tables, Figures, Listings) for regulatory submission"
+  visualization:
+    tool: PROC SGRENDER
+    template: PhUSEboxplot
+    features: [box plots, scatter overlays, reference lines, outlier markers]
+
+workflow:
+  phuse_boxplot:
+    description: "Generate PhUSE-compliant box plots for clinical measurements"
+    steps:
+      - "Load and access test data (util_access_test_data)"
+      - "Create treatment abbreviations (PROC FORMAT)"
+      - "Subset data by parameters and visits"
+      - "Filter by population and analysis flags"
+      - "Detect outliers outside normal range"
+      - "Calculate summary statistics (PROC SUMMARY equivalent)"
+      - "Generate box plots by visit and treatment (PROC SGRENDER)"
+      - "Output to PDF with pagination"
+    config:
+      dataset: ADLBC
+      parameters: ["ALB"]
+      visits: [0, 2, 4, 6]
+      treatment_var: trtp_short
+      measurement_var: aval
+      normal_range: [a1lo, a1hi]
+      population_flag: saffl
+      analysis_flag: anl01fl
+      ref_lines: UNIFORM
+      max_boxes_per_page: 20
+  dataset_comparison:
+    description: "Compare datasets for QC validation"
+    steps:
+      - "Compare variable lists between datasets (%compvars)"
+      - "Compare all datasets in two libraries (%complibs)"
+      - "Detailed comparison with BY variables (PROC COMPARE)"
+    use_cases:
+      - "Validate data transformations"
+      - "Identify discrepancies between baseline and modified datasets"
+      - "QC check for programming changes"
+
+existing_migration:
+  status: "Partial PySpark/Airflow migration completed"
+  location: airflow_migration/
+  components:
+    - dags/clinical_analysis_pipeline.py: "4-task Airflow DAG"
+    - scripts/data_ingestion.py: "Load SAS data, detect outliers"
+    - scripts/data_preprocessing.py: "Filter and prepare data"
+    - scripts/statistical_analysis.py: "Calculate summary statistics"
+    - scripts/visualization.py: "Generate Plotly box plots"
+    - utils/phuse_utils.py: "Python implementations of PhUSE macros"
+    - config/pipeline_config.yaml: "YAML configuration replacing SAS macro variables"
+  scope: "PhUSE box plot workflow only - does NOT include dataset comparison utilities"
+  documentation: airflow_migration/docs/sas_to_pyspark_mapping.md
+
+slo:
+  runtime_minutes: unknown
+  notes: "Performance SLOs not documented. Need to establish baseline timing."
+  max_memory_gb: 8
+  notes_memory: "Estimated based on data sizes (102MB + 62MB) with reasonable overhead"
+
+validation:
+  rowcount_tolerance: 0
+  numeric_abs_tol: 1.0e-9
+  numeric_rel_tol: 1.0e-6
+  notes: "Standard pharmaceutical precision requirements. May need adjustment for specific parameters."
+  test_data: data/adam/mod_01/
+  baselines:
+    - "Modified test datasets with controlled differences for comparison validation"
+    - "Known variable changes (add/drop)"
+    - "Known observation changes (delete/duplicate)"
+    - "Known value modifications"
+
+todos:
+  - "Verify actual SAS version with user"
+  - "Establish performance baseline timing for workflows"
+  - "Determine if scheduling/automation is required (cron/Airflow)"
+  - "Clarify scope: migrate PhUSE only, comparison utilities only, or both?"
+  - "Determine if external dependencies (PhUSE scripts repo, SASScottBass macros) need to be included"
+  - "Assess whether to extend existing PySpark migration or create new Python solution"
+  - "Determine target environment: local development, cloud (Databricks), or both"
+  - "Clarify authentication requirements if connecting to external data sources"
+
+gaps:
+  - "PhUSE utility macros are referenced but not included in repository"
+  - "SASScottBass macro library referenced but not included"
+  - "Dataset comparison utilities (%compvars, %complibs, %compare) not yet migrated to Python"
+  - "FDA Jumpstart scripts mentioned but source not available in repo"
+  - "No unit tests or automated testing framework for SAS code"
